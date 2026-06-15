@@ -1,6 +1,7 @@
-#include <atcoder/all>
-import std;
+#include <bits/stdc++.h>
 using namespace std;
 int main() {
-    cout << "Hello, World\n";
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    cout << "Hello World\n";
 }

@@ -29,14 +29,12 @@ curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix 
 nix-shell --version
 ```
 
-すでに Nix が入っているなら、この手順は不要です。
-
 ### 手順 1. このディレクトリに移動
 
 `shell.nix` のあるディレクトリに移動するだけです（git リポジトリである必要はありません）。
 
 ```sh
-cd ~/procon      # shell.nix がある場所
+cd path/to/procon      # shell.nix がある場所
 ```
 
 ### 手順 2. 環境に入る
@@ -62,47 +60,9 @@ g++ a.cpp        # import std; 込みでコンパイル → ./a を生成
 - 標準入力を読むプログラムは通常どおり: `./a < input.txt` や `echo "1" | ./a`。
 - 初回コンパイル時だけ std モジュール（`std.gcm` / `std.o`）を 1 回ビルドして `~/.cache/cp-cxx` にキャッシュします（数秒）。以降は再利用されます。
 
-#### ワンライナー（入る → ビルド → 実行）
-
-```sh
-nix-shell --run 'g++ a.cpp && ./a'
-```
 
 ---
 
-## 詳細
-
-### コンパイルオプション
-
-デフォルトは `-std=c++23 -fmodules -O2 -Wall -Wextra`（`shell.nix` の `CP_CXX_FLAGS` で変更可）。
-追加フラグはそのまま渡せます（例: 自作ライブラリの include）:
-
-```sh
-g++ a.cpp -Ilib/include
-```
-
-- `-o 名前` を自分で指定した場合は、その名前が優先されます。
-- 対応拡張子: `.cpp` `.cc` `.cxx` `.C` `.c++`。
-- ソース以外の使い方（`g++ --version` など）はそのまま素の g++ に委譲されます。
-
-### `import std;` が動く仕組み（参考）
-
-GCC で `import std;` を使うには次の 3 つが必要です。`shell.nix` の `g++` ラッパーがこれを自動化しています。
-
-1. `-fmodules -std=c++23` でコンパイルする
-2. libstdc++ の `std.cc` から `std.gcm`（コンパイル済みモジュール）を生成する
-3. その `std.o`（モジュール初期化子）をリンクする ← これが無いと `"initializer for module std"` のリンクエラーになる
-
-### 再現性
-
-`shell.nix` は nixpkgs を**特定コミットに固定**しています。そのため別のPC・別の日に実行しても、まったく同じ GCC 15.2.0 になります。
-GCC を更新したいときは、`shell.nix` 内の `url` のコミットハッシュを差し替えて sha256 を取り直します:
-
-```sh
-nix-prefetch-url --unpack https://github.com/NixOS/nixpkgs/archive/<新しいrev>.tar.gz
-```
-
----
 
 ## トラブルシュート
 

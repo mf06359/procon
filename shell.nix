@@ -19,6 +19,7 @@ let
   pkgs = import nixpkgs { };
 
   gcc = pkgs.gcc15; # import std; に必要 (GCC 15+)
+  atcoderLibrary = ./ac-library; # このリポジトリに同梱されている AtCoder Library
 in
 pkgs.mkShell {
   packages = [ gcc ];
@@ -30,8 +31,11 @@ pkgs.mkShell {
 
     # 実体の g++ (PATH の曖昧さを避けて store path を直接指す)
     export CP_GXX="${gcc}/bin/g++"
+    # AtCoder Library を `#include <atcoder/...>` で引けるようにする
+    export CP_ATCODER_DIR="${atcoderLibrary}"
+    export CPLUS_INCLUDE_PATH="$CP_ATCODER_DIR''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
     # コンパイルフラグ。std モジュールと利用側で同じものを使う必要があるので一元管理。
-    CP_CXX_FLAGS=(-std=c++23 -fmodules -O2 -Wall -Wextra)
+    CP_CXX_FLAGS=(-std=c++23 -fmodules -O2 -Wall -Wextra -I"$CP_ATCODER_DIR")
     # std モジュール (std.gcm / std.o) のグローバルキャッシュ置き場
     export CP_GCM_DIR="''${XDG_CACHE_HOME:-$HOME/.cache}/cp-cxx/gcm.cache"
     export CP_STD_O="$CP_GCM_DIR/std.o"   # リンク時に必要なモジュール初期化子

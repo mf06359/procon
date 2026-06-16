@@ -1,16 +1,20 @@
-# 競技プログラミング用 C++ 環境 (`import std;` 対応)
+# Competitive-programming C++ environment (`import std;`).
 #
-#   nix-shell        # この shell.nix のあるディレクトリで実行 → 環境に入る
-#   g++ a.cpp        # → import std; 込みでコンパイルし、実行ファイル ./a を生成
-#   ./a              # 実行
+#   nix-shell            # enter (default: bash)
+#   nix-shell -A bash    # enter bash (same as default)
+#   nix-shell -A zsh     # enter zsh (sources your ~/.zshrc, then unaliases g++)
+#   nix-shell -A nushell # enter nushell
 #
-# `import std;` には GCC 15 以降が必要なので、gcc15 を固定で取得しています。
+#   g++ a.cpp            # compile (import std;) -> ./a
+#   ./a                  # run
+#
+# `g++` is a PATH wrapper (see writeShellScriptBin below): an external command,
+# so flags pass through in any shell. import std; needs GCC 15+, pinned here.
 { }:
 
 let
-  # gcc15 (import std; 対応) を確実に得るため nixpkgs を「コミット固定」。
-  # この rev は nixpkgs-unstable の特定コミットなので、どのPCでも同一の gcc15 になる。
-  # 更新したいときは url の hash を新しいコミットに変え、sha256 を取り直す:
+  # Pinned nixpkgs commit -> identical gcc15 on any machine.
+  # To bump: change the commit hash and refresh sha256 with
   #   nix-prefetch-url --unpack https://github.com/NixOS/nixpkgs/archive/<rev>.tar.gz
   nixpkgs = fetchTarball {
     url    = "https://github.com/NixOS/nixpkgs/archive/9eac87a12312b8f60dd52e1c6e1a265f6fc7f5fc.tar.gz";
@@ -18,85 +22,130 @@ let
   };
   pkgs = import nixpkgs { };
 
-  gcc = pkgs.gcc15; # import std; に必要 (GCC 15+)
-  atcoderLibrary = ./ac-library; # このリポジトリに同梱されている AtCoder Library
-in
-pkgs.mkShell {
-  packages = [ gcc ];
+  gcc = pkgs.gcc15;              # required for import std; (GCC 15+)
+  atcoderLibrary = ./ac-library; # AtCoder Library bundled in this repo
+  projectDir = builtins.toString ./.; # absolute path to this repo (not copied to store)
 
-  # ↓ ここが「~/.zshrc の alias のようなコマンド」本体。
-  #   nix-shell に入った時にシェル関数 g++ として定義されます。
-  shellHook = ''
-    echo "C++ 競プロ環境 (import std; 対応 / gcc15)"
+  # The g++ wrapper that lives on PATH. One source file -> executable named
+  # after it (a.cpp -> ./a). Flags turn obvious bugs into compile-time warnings
+  # (-Wall -Wextra -Wshadow) and add runtime bounds checks (_GLIBCXX_ASSERTIONS).
+  # -fsanitize=address/undefined is NOT used: nix GCC on macOS ships no
+  # libasan/libubsan, so it cannot link.
+  cpGxx = pkgs.writeShellScriptBin "g++" ''
+    REAL_GXX="${gcc}/bin/g++"                 # real g++ (absolute -> no recursion)
+    ATCODER="${atcoderLibrary}"
+    CACHE="''${XDG_CACHE_HOME:-$HOME/.cache}/cp-cxx"   # global std module cache
+    STD_GCM="$CACHE/std.gcm"; STD_O="$CACHE/std.o"; STD_MAP="$CACHE/std.map"
+    # -fmodule-mapper points `import std;` straight at the cached BMI, so NO
+    # gcm.cache/ directory is created in the working directory.
+    FLAGS=(-std=c++23 -fmodules -fmodule-mapper="$STD_MAP" -O2
+           -Wall -Wextra -Wshadow -Wno-sign-compare
+           -D_GLIBCXX_ASSERTIONS -isystem "$ATCODER")
 
-    # 実体の g++ (PATH の曖昧さを避けて store path を直接指す)
-    export CP_GXX="${gcc}/bin/g++"
-    # AtCoder Library を `#include <atcoder/...>` で引けるようにする
-    export CP_ATCODER_DIR="${atcoderLibrary}"
-    export CPLUS_INCLUDE_PATH="$CP_ATCODER_DIR''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
-    # コンパイルフラグ。std モジュールと利用側で同じものを使う必要があるので一元管理。
-    CP_CXX_FLAGS=(-std=c++23 -fmodules -O2 -Wall -Wextra -I"$CP_ATCODER_DIR")
-    # std モジュール (std.gcm / std.o) のグローバルキャッシュ置き場
-    export CP_GCM_DIR="''${XDG_CACHE_HOME:-$HOME/.cache}/cp-cxx/gcm.cache"
-    export CP_STD_O="$CP_GCM_DIR/std.o"   # リンク時に必要なモジュール初期化子
-
-    # この gcc に同梱されている libstdc++ のモジュールソース std.cc を探す
-    # (gcc15/nixpkgs では include/c++/<ver>/bits/std.cc に置かれている)
-    CP_STD_SRC=""
-    for d in $("$CP_GXX" -std=c++23 -E -x c++ /dev/null -Wp,-v 2>&1 | sed -n 's/^ //p'); do
-      for cand in "$d/std.cc" "$d/bits/std.cc"; do
-        if [ -f "$cand" ]; then CP_STD_SRC="$cand"; break 2; fi
+    # locate libstdc++'s std.cc shipped with this gcc
+    find_std_cc() {
+      local d cand
+      for d in $("$REAL_GXX" -std=c++23 -E -x c++ /dev/null -Wp,-v 2>&1 | sed -n 's/^ //p'); do
+        for cand in "$d/std.cc" "$d/bits/std.cc"; do
+          [ -f "$cand" ] && { printf '%s\n' "$cand"; return 0; }
+        done
       done
+      return 1
+    }
+
+    # build the std module once into the cache; rebuild if gcc or FLAGS change
+    ensure_global_std() {
+      local src want have
+      src="$(find_std_cc)" || { echo "std.cc not found (import std; unsupported?)" >&2; return 1; }
+      mkdir -p "$CACHE"
+      printf 'std %s\n' "$STD_GCM" > "$STD_MAP"
+      want="''${FLAGS[*]}"
+      have="$(cat "$CACHE/build-flags" 2>/dev/null || true)"
+      if [ ! -f "$STD_GCM" ] || [ "$src" -nt "$STD_GCM" ] || [ "$want" != "$have" ]; then
+        echo "building std module (first run / flags changed)..." >&2
+        "$REAL_GXX" "''${FLAGS[@]}" -c "$src" -o "$STD_O" || return 1
+        printf '%s' "$want" > "$CACHE/build-flags"
+      fi
+    }
+
+    # split args into one source file and the rest
+    src=""; have_o=0; rest=()
+    for a in "$@"; do
+      case "$a" in
+        -o) have_o=1; rest+=("$a") ;;
+        *.cpp|*.cc|*.cxx|*.C|*.c++)
+          if [ -z "$src" ]; then src="$a"; else rest+=("$a"); fi ;;
+        *) rest+=("$a") ;;
+      esac
     done
-    export CP_STD_SRC
-    if [ -z "$CP_STD_SRC" ]; then
-      echo "warning: std.cc が見つかりません (この gcc は import std; 非対応かもしれません)" >&2
+
+    # no source (e.g. g++ --version) -> delegate to real g++
+    if [ -z "$src" ]; then exec "$REAL_GXX" "$@"; fi
+
+    ensure_global_std || exit 1
+    if [ "$have_o" -eq 1 ]; then
+      exec "$REAL_GXX" "''${FLAGS[@]}" "$src" "$STD_O" "''${rest[@]}"
+    else
+      out="''${src##*/}"; out="''${out%.*}"
+      "$REAL_GXX" "''${FLAGS[@]}" "$src" "$STD_O" -o "$out" "''${rest[@]}" && echo "-> ./$out"
     fi
-
-    # std モジュールの CMI(std.gcm) を一度だけビルドしてキャッシュ
-    _cp_build_std() {
-      [ -n "$CP_STD_SRC" ] || { echo "import std; は利用できません" >&2; return 1; }
-      mkdir -p "$CP_GCM_DIR"
-      if [ ! -f "$CP_GCM_DIR/std.gcm" ] || [ "$CP_STD_SRC" -nt "$CP_GCM_DIR/std.gcm" ]; then
-        echo "std モジュールをビルド中 (初回のみ)..." >&2
-        ( cd "$CP_GCM_DIR/.." \
-          && "$CP_GXX" "''${CP_CXX_FLAGS[@]}" -c "$CP_STD_SRC" -o "$CP_GCM_DIR/std.o" ) || return 1
-      fi
-    }
-
-    # g++ ラッパー: ソース1個を渡すと import std; 込みでビルドし、
-    #   拡張子を除いた名前 (a.cpp -> a) で実行ファイルを作る。
-    #   ソースが無い / 別の使い方 (--version 等) のときは素の g++ にそのまま渡す。
-    g++() {
-      local src="" out="" have_o=0 a
-      local -a rest=()
-      for a in "$@"; do
-        case "$a" in
-          -o) have_o=1; rest+=("$a") ;;
-          *.cpp|*.cc|*.cxx|*.C|*.c++)
-            if [ -z "$src" ]; then src="$a"; else rest+=("$a"); fi ;;
-          *) rest+=("$a") ;;
-        esac
-      done
-
-      if [ -z "$src" ]; then "$CP_GXX" "$@"; return; fi
-
-      _cp_build_std || return 1
-      # import std; のコンパイルに使う std.gcm をこのディレクトリの gcm.cache に用意
-      mkdir -p gcm.cache
-      if [ ! -f gcm.cache/std.gcm ] || [ "$CP_GCM_DIR/std.gcm" -nt gcm.cache/std.gcm ]; then
-        cp "$CP_GCM_DIR/std.gcm" gcm.cache/std.gcm
-      fi
-
-      # std.o (モジュール初期化子) はリンク時に必要なので毎回渡す
-      if [ "$have_o" -eq 1 ]; then
-        "$CP_GXX" "''${CP_CXX_FLAGS[@]}" "$src" "$CP_STD_O" "''${rest[@]}"
-      else
-        out="''${src##*/}"; out="''${out%.*}"
-        "$CP_GXX" "''${CP_CXX_FLAGS[@]}" "$src" "$CP_STD_O" -o "$out" "''${rest[@]}" && echo "-> ./$out"
-      fi
-    }
-
-    echo "使い方:  g++ XXX.cpp   ->  実行ファイル ./XXX を生成"
   '';
-}
+
+  # one mkShell per interactive shell; `launch` runs only for interactive sessions
+  mkShellFor = { tag, extraPkgs ? [ ], launch ? "" }:
+    pkgs.mkShell {
+      packages = [ cpGxx gcc ] ++ extraPkgs;
+      shellHook = ''
+        export CP_GXX_BIN="${cpGxx}/bin"
+        export PATH="$CP_GXX_BIN:$PATH"   # our g++ wins over any other g++
+        export CPLUS_INCLUDE_PATH="${atcoderLibrary}''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
+        # console appearance (per-shell files live in ./.config; theme in starship.toml)
+        export CP_CONFIG_DIR="${projectDir}/.config"
+        export CP_CACHE_DIR="''${XDG_CACHE_HOME:-$HOME/.cache}/cp-cxx"
+        export STARSHIP_CONFIG="$CP_CONFIG_DIR/starship.toml"
+        if [[ $- == *i* ]]; then
+          echo "C++ CP env (${tag} / import std; / gcc15) — g++ XXX.cpp -> ./XXX"
+          ${launch}
+        fi
+      '';
+    };
+
+  nushell = mkShellFor {
+    tag = "nushell";
+    extraPkgs = [ pkgs.nushell ];
+    # generate starship's nu integration at runtime (uses PATH starship), then
+    # source it + the nushell appearance file
+    launch = ''
+      if command -v starship >/dev/null 2>&1; then
+        mkdir -p "$CP_CACHE_DIR"
+        starship init nu > "$CP_CACHE_DIR/starship.nu" 2>/dev/null || true
+        exec nu --execute "source $CP_CACHE_DIR/starship.nu; source $CP_CONFIG_DIR/nu.nu"
+      else
+        exec nu --execute "source $CP_CONFIG_DIR/nu.nu"
+      fi
+    '';
+  };
+  bash = mkShellFor {
+    tag = "bash";
+    launch = ''[ -f "$CP_CONFIG_DIR/bash.sh" ] && source "$CP_CONFIG_DIR/bash.sh"'';
+  };
+  zsh = mkShellFor {
+    tag = "zsh";
+    extraPkgs = [ pkgs.zsh ];
+    # source the user's config, drop their `alias g++`, re-prioritise ours, set prompt
+    launch = ''
+      ZD="$(mktemp -d)"
+      {
+        printf '%s\n' '[ -f "$HOME/.zshenv" ] && source "$HOME/.zshenv"'
+        printf '%s\n' '[ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc"'
+        printf '%s\n' 'unalias g++ 2>/dev/null; unfunction g++ 2>/dev/null'
+        printf '%s\n' 'export PATH="'"$CP_GXX_BIN"':$PATH"'
+        printf '%s\n' '[ -f "'"$CP_CONFIG_DIR"'/zsh.zsh" ] && source "'"$CP_CONFIG_DIR"'/zsh.zsh"'
+      } > "$ZD/.zshrc"
+      export ZDOTDIR="$ZD"
+      exec zsh -i
+    '';
+  };
+in
+# bare `nix-shell` -> bash; `nix-shell -A {bash,zsh,nushell}` -> tagged shell
+bash // { inherit nushell bash zsh; default = bash; }

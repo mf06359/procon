@@ -1,0 +1,28 @@
+# Starship theme for the CP nix-shell (selected via $STARSHIP_CONFIG in shell.nix).
+# Distinct look so you can tell you are inside `nix-shell`: shows `cp:<shell>`.
+# Edit freely.
+
+add_newline = false
+format = "$shell$directory$git_branch$character"
+
+[shell]
+disabled = false
+bash_indicator = "cp:bash"
+zsh_indicator = "cp:zsh"
+nu_indicator = "cp:nu"
+unknown_indicator = "cp"
+style = "bold cyan"
+format = "[$indicator]($style) "
+
+[directory]
+style = "bold blue"
+truncation_length = 3
+truncate_to_repo = false
+
+[git_branch]
+style = "purple"
+format = "[$branch]($style) "
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"

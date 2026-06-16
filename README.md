@@ -1,73 +1,100 @@
-# 競技プログラミング C++ 環境（`import std;` 対応）
+# Competitive-programming C++ environment (`import std;`)
 
-`import std;` を使った C++ を、Nix で用意した **GCC 15** でコンパイル・実行するための環境です。
-`g++ XXX.cpp` を実行すると、`import std;` 込みでコンパイルして実行ファイル `./XXX` を生成します。
+Compile and run C++ that uses `import std;`, using GCC 15 provided by Nix.
+`g++ XXX.cpp` compiles it and produces the executable `./XXX`.
 
 ```sh
-g++ a.cpp     # → ./a を生成
-./a           # 実行
+g++ a.cpp     # -> ./a
+./a           # run
 ```
 
 ---
 
-## 0 から実行する手順
+## From scratch
 
-### 手順 0. Nix をインストール（このPCに初めて入れるとき・1回だけ）
-
-新しいPCでは、まず Nix を入れます（macOS / Linux 共通）。
+### 0. Install Nix (once per machine)
 
 ```sh
-# Determinate Nix インストーラ（flakes 等が有効な状態で入る・推奨）
+# Determinate Nix installer (flakes etc. enabled)
 curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
 ```
 
-> 公式インストーラでも可: `sh <(curl -L https://nixos.org/nix/install)`
+> Official installer also works: `sh <(curl -L https://nixos.org/nix/install)`
 
-インストール後は **ターミナルを開き直す**（または表示される指示に従って source する）と `nix-shell` が使えます。確認:
+Reopen the terminal, then verify:
 
 ```sh
 nix-shell --version
 ```
 
-### 手順 1. このディレクトリに移動
-
-`shell.nix` のあるディレクトリに移動するだけです（git リポジトリである必要はありません）。
+### 1. Go to this directory
 
 ```sh
-cd path/to/procon      # shell.nix がある場所
+cd path/to/procon      # where shell.nix is
 ```
 
-### 手順 2. 環境に入る
+### 2. Enter the environment
+
+Pick a shell with a tag (`-A`). Bare `nix-shell` defaults to bash.
 
 ```sh
-nix-shell
+nix-shell              # bash (default)
+nix-shell -A bash      # bash
+nix-shell -A zsh       # zsh (sources your ~/.zshrc, then unaliases g++)
+nix-shell -A nushell   # nushell
 ```
 
-- **初回のみ**、固定された GCC 15 一式をキャッシュから取得します（≈72 MiB ダウンロード / 約 1.6 GiB 展開、**ソースビルドはなし**）。
-- 2 回目以降は一瞬で入れます。
-- 抜けるときは `exit` または `Ctrl-D`。
+- First run fetches GCC 15 (and the chosen shell) from cache (~72 MiB download, no source build).
+- Later runs are instant. Exit with `exit` or `Ctrl-D`.
 
-### 手順 3. コンパイルして実行
-
-`nix-shell` に入った状態で:
+### 3. Compile and run
 
 ```sh
-g++ a.cpp        # import std; 込みでコンパイル → ./a を生成
-./a              # 実行
+g++ a.cpp        # compile (import std;) -> ./a
+./a              # run
 ```
 
-- 出力名はソース名から決まります: **`XXX.cpp` → `./XXX`**（例: `foo.cpp` → `./foo`）。
-- 標準入力を読むプログラムは通常どおり: `./a < input.txt` や `echo "1" | ./a`。
-- 初回コンパイル時だけ std モジュール（`std.gcm` / `std.o`）を 1 回ビルドして `~/.cache/cp-cxx` にキャッシュします（数秒）。以降は再利用されます。
+- Output name follows the source: **`XXX.cpp` -> `./XXX`** (e.g. `foo.cpp` -> `./foo`).
+- Extra flags pass through: `g++ a.cpp -DLOCAL -o foo`.
+- Stdin in bash/zsh: `./a < input.txt`. In nushell use a pipe:
+  ```nu
+  open --raw input.txt | ./a
+  "1\n" | ./a
+  ```
+- The first compile builds the std module into `~/.cache/cp-cxx` (a few seconds); reused afterwards.
+- Nothing is written to the working directory (no `gcm.cache/`): `import std;` is resolved from the cache via `-fmodule-mapper`.
 
+## Console appearance
 
----
+Each shell uses a starship prompt that shows `cp:<shell>` so you can tell you are inside the env.
+The look is defined in `./.config/`:
 
+- `.config/starship.toml` — the theme (edit this for the prompt look).
+- `.config/bash.sh`, `.config/zsh.zsh`, `.config/nu.nu` — per-shell enablement / tweaks.
 
-## トラブルシュート
+`shell.nix` sets `STARSHIP_CONFIG` to `.config/starship.toml` and loads the matching file per shell.
+Requires `starship` on `PATH` (skipped gracefully if missing).
 
-| 症状 | 対処 |
+## Bug detection
+
+`g++` always compiles with:
+
+- **Compile-time warnings**: `-Wall -Wextra -Wshadow` (`-Wno-sign-compare`) — catches unused
+  variables, bad shifts, uninitialized use, etc.
+- **Runtime bounds checks**: `-D_GLIBCXX_ASSERTIONS` — e.g. `vector::operator[]` out of range
+  aborts with an assertion message.
+
+`-fsanitize=address,undefined` is intentionally **not** used: nix GCC on macOS ships no
+`libasan`/`libubsan`, so it cannot link. `_GLIBCXX_ASSERTIONS` covers the common out-of-bounds
+case. For full ASan/UBSan, compile the file with clang (without `import std;`).
+
+## Troubleshooting
+
+| Symptom | Fix |
 |---|---|
-| `nix-shell: command not found` | Nix 未インストール、またはインストール後にターミナルを開き直していない |
-| `std.cc が見つかりません` という警告 | その GCC が `import std;` 非対応。`shell.nix` は GCC 15 を使うので通常出ない |
-| 別マシンに移したい | `shell.nix` を置いて `nix-shell` するだけ（初回はネット接続が必要） |
+| `nix-shell: command not found` | Nix not installed, or terminal not reopened after install |
+| `std.cc not found` warning | That GCC lacks import std; (shell.nix uses GCC 15, so it should not happen) |
+| `g++` runs the wrong compiler in zsh | The zsh tag unaliases `g++`; check `which g++` points to `/nix/store/...-g++/bin/g++` |
+| Move to another machine | Copy `shell.nix` and run `nix-shell` (needs network on first run) |
+| Want nushell instead of bash | `nix-shell -A nushell` |
+| Plain prompt (no `cp:` look) | Install `starship`, or edit/empty `.config/{bash.sh,zsh.zsh,nu.nu}` |

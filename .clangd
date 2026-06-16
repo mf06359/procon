@@ -1,0 +1,15 @@
+# clangd 用設定（競技プログラミング / import std;）
+#
+# このプロジェクトのソースは次の形にしている:
+#     #ifdef __clangd__
+#     #include <bits/stdc++.h>   // clangd だけが見る（import std; を解釈できないため）
+#     #else
+#     import std;                 // g++ でのビルド時はこちら
+#     #endif
+#
+# clangd は __clangd__ を自動定義するので bits/stdc++.h 側を解釈し、
+# std::vector などを「既に利用可能」と認識する → #include の自動挿入をしなくなる。
+# ランジ等の C++23 機能を解釈させるため言語標準だけ指定する。
+CompileFlags:
+  Add:
+    - -std=c++23

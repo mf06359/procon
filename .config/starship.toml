@@ -1,28 +1,41 @@
-# Starship theme for the CP nix-shell (selected via $STARSHIP_CONFIG in shell.nix).
-# Distinct look so you can tell you are inside `nix-shell`: shows `cp:<shell>`.
-# Edit freely.
+# Kali-style two-line prompt for the CP nix-shell.
+#   ┌──(user@host)-[~/path]-[git]-(cp:<shell>)
+#   └─$
+# Selected via $STARSHIP_CONFIG (set by shell.nix). Edit freely.
 
 add_newline = false
-format = "$shell$directory$git_branch$character"
+format = '''[┌──](bold green)$username$hostname$directory$git_branch$shell
+[└─](bold green)$character'''
+
+[username]
+show_always = true
+style_user = "bold blue"
+style_root = "bold red"
+format = '[\(](bold green)[$user]($style)'
+
+[hostname]
+ssh_only = false
+style = "bold blue"
+format = '[@$hostname]($style)[\)](bold green)'
+
+[directory]
+style = "bold white"
+truncation_length = 3
+truncate_to_repo = false
+format = '[-\[](bold green)[$path]($style)[\]](bold green)'
+
+[git_branch]
+style = "bold purple"
+format = '[-\[](bold green)[$branch]($style)[\]](bold green)'
 
 [shell]
 disabled = false
-bash_indicator = "cp:bash"
-zsh_indicator = "cp:zsh"
-nu_indicator = "cp:nu"
-unknown_indicator = "cp"
-style = "bold cyan"
-format = "[$indicator]($style) "
-
-[directory]
-style = "bold blue"
-truncation_length = 3
-truncate_to_repo = false
-
-[git_branch]
-style = "purple"
-format = "[$branch]($style) "
+bash_indicator = "bash"
+zsh_indicator = "zsh"
+nu_indicator = "nu"
+unknown_indicator = "sh"
+format = '[-\(](bold green)[cp:$indicator](bold cyan)[\)](bold green)'
 
 [character]
-success_symbol = "[❯](bold green)"
-error_symbol = "[❯](bold red)"
+success_symbol = '[\$](bold blue)'
+error_symbol = '[\$](bold red)'

@@ -66,7 +66,14 @@ g++ a.cpp        # compile (import std;) -> ./a
 
 ## Console appearance
 
-Each shell uses a starship prompt that shows `cp:<shell>` so you can tell you are inside the env.
+Each shell uses a Kali-style two-line starship prompt that ends with `cp:<shell>`, so you can
+tell you are inside the env:
+
+```text
+┌──(user@host)-[~/path]-[git]-(cp:bash)
+└─$
+```
+
 The look is defined in `./.config/`:
 
 - `.config/starship.toml` — the theme (edit this for the prompt look).

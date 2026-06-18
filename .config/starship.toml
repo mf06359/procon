@@ -4,7 +4,7 @@
 # Selected via $STARSHIP_CONFIG (set by shell.nix). Edit freely.
 
 add_newline = false
-format = '''[┌──](bold green)$username$hostname$directory$git_branch$shell
+format = '''[┌──](bold green)$username$hostname$directory$git_branch$python$shell
 [└─](bold green)$character'''
 
 [username]
@@ -35,6 +35,15 @@ zsh_indicator = "zsh"
 nu_indicator = "nu"
 unknown_indicator = "sh"
 format = '[-\(](bold green)[cp:$indicator](bold cyan)[\)](bold green)'
+
+# Active Python venv only (no version), framed like -(venv). Shows when $VIRTUAL_ENV is set.
+[python]
+disabled = false
+detect_extensions = []
+detect_files = []
+detect_folders = []
+style = "bold green"
+format = '[-\(](bold green)[$virtualenv]($style)[\)](bold green)'
 
 [character]
 success_symbol = '[\$](bold blue)'

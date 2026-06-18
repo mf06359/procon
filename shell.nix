@@ -1,8 +1,8 @@
 # Competitive-programming C++ environment (`import std;`).
 #
-#   nix-shell            # enter (default: bash)
-#   nix-shell -A bash    # enter bash (same as default)
-#   nix-shell -A zsh     # enter zsh (sources your ~/.zshrc, then unaliases g++)
+#   nix-shell            # enter (default: zsh)
+#   nix-shell -A zsh     # enter zsh (same as default; sources ~/.zshrc, unaliases g++)
+#   nix-shell -A bash    # enter bash
 #   nix-shell -A nushell # enter nushell
 #
 #   g++ a.cpp            # compile (import std;) -> ./a
@@ -94,7 +94,12 @@ let
   # one mkShell per interactive shell; `launch` runs only for interactive sessions
   mkShellFor = { tag, extraPkgs ? [ ], launch ? "" }:
     pkgs.mkShell {
-      packages = [ cpGxx gcc ] ++ extraPkgs;
+      # clipboard tools so the `clip` alias works off-mac too (mac uses system pbcopy).
+      # History search (fzf Ctrl+R) and inline autosuggestions come from the
+      # user's own ~/.zshrc, which the zsh shell sources — nothing to add here.
+      packages = [ cpGxx gcc ]
+        ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.wl-clipboard pkgs.xclip ]
+        ++ extraPkgs;
       shellHook = ''
         export CP_GXX_BIN="${cpGxx}/bin"
         export PATH="$CP_GXX_BIN:$PATH"   # our g++ wins over any other g++
@@ -147,5 +152,5 @@ let
     '';
   };
 in
-# bare `nix-shell` -> bash; `nix-shell -A {bash,zsh,nushell}` -> tagged shell
-bash // { inherit nushell bash zsh; default = bash; }
+# bare `nix-shell` -> zsh; `nix-shell -A {bash,zsh,nushell}` -> tagged shell
+zsh // { inherit nushell bash zsh; default = zsh; }

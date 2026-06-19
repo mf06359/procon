@@ -4,8 +4,8 @@
 # Selected via $STARSHIP_CONFIG (set by shell.nix). Edit freely.
 
 add_newline = false
-format = '''[┌──](bold green)$username$hostname$directory$git_branch$python$shell
-[└─](bold green)$character'''
+format = '''[ ┌──](bold green)$username$hostname$directory$git_branch$python$shell
+[ └─](bold green)$character'''
 
 [username]
 show_always = true

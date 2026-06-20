@@ -97,7 +97,7 @@ let
       # clipboard tools so the `clip` alias works off-mac too (mac uses system pbcopy).
       # History search (fzf Ctrl+R) and inline autosuggestions come from the
       # user's own ~/.zshrc, which the zsh shell sources — nothing to add here.
-      packages = [ cpGxx gcc ]
+      packages = [ cpGxx gcc pkgs.starship ]   # starship は nix-shell が用意（system 非依存）
         ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.wl-clipboard pkgs.xclip ]
         ++ extraPkgs;
       shellHook = ''

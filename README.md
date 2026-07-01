@@ -35,17 +35,25 @@ cd path/to/procon      # where shell.nix is
 
 ### 2. Enter the environment
 
-Pick a shell with a tag (`-A`). Bare `nix-shell` defaults to bash.
+Two ways — classic `nix-shell` or flakes `nix develop`. Both default to zsh.
 
 ```sh
-nix-shell              # bash (default)
+# classic (shell.nix)
+nix-shell              # zsh (default)
 nix-shell -A bash      # bash
 nix-shell -A zsh       # zsh (sources your ~/.zshrc, then unaliases g++)
 nix-shell -A nushell   # nushell
+
+# flake (flake.nix) — run from the repo root
+nix develop            # zsh (default)
+nix develop .#bash     # bash
+nix develop .#zsh      # zsh
+nix develop .#nushell  # nushell
 ```
 
 - First run fetches GCC 15 (and the chosen shell) from cache (~72 MiB download, no source build).
 - Later runs are instant. Exit with `exit` or `Ctrl-D`.
+- `nix develop` needs `flake.nix` + `flake.lock` committed to git, and must run from the repo root (`./.config` and `./ac-library` are read live from `$PWD`).
 
 ### 3. Compile and run
 

@@ -1,15 +1,19 @@
 {
   description = "Competitive-programming C++ environment (import std; / GCC 15)";
 
-  # Pinned nixpkgs -> identical gcc15 on any machine. To update:
-  #   nix flake update            (or: nix flake lock --update-input nixpkgs)
-  # and optionally change the rev below.
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/9eac87a12312b8f60dd52e1c6e1a265f6fc7f5fc";
+  # Pin nixpkgs to the same tarball as shell.nix so `nix develop` can reuse the
+  # tarball cache instead of going through the Git flake fetch path.
+  inputs.nixpkgs.url = "https://github.com/NixOS/nixpkgs/archive/9eac87a12312b8f60dd52e1c6e1a265f6fc7f5fc.tar.gz";
+  inputs.nixpkgs.flake = false;
 
   outputs = { self, nixpkgs }:
     let
       systems = [ "aarch64-darwin" "x86_64-darwin" "aarch64-linux" "x86_64-linux" ];
-      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      pkgsFor = system: import nixpkgs { inherit system; };
+      forAllSystems = f: builtins.listToAttrs (map (system: {
+        name = system;
+        value = f (pkgsFor system);
+      }) systems);
     in
     {
       # nix develop            -> zsh (default)

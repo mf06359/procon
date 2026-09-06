@@ -1,2 +1,11 @@
 lib
 .cache
+.nix
+ac-library
+cp
+a.cpp
+a
+input.txt
+b.cpp
+d.cpp
+x

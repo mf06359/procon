@@ -97,11 +97,25 @@
 
           # one devShell per interactive shell; `launch` runs only for interactive sessions
           mkShellFor = { tag, extraPkgs ? [ ], launch ? "" }:
-            pkgs.mkShell {
-              packages = [ cpGxx gcc pkgs.starship ]   # starship provided by nix (system-independent)
+            let
+              shellPackages = [ cpGxx gcc pkgs.starship ]   # starship provided by nix (system-independent)
                 ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.wl-clipboard pkgs.xclip ]
                 ++ extraPkgs;
+              # Single closure aggregating every dependency of this shell, so
+              # one GC root (in shellHook below) covers all of it.
+              devEnv = pkgs.buildEnv { name = "cp-dev-env-${tag}"; paths = shellPackages; };
+            in
+            pkgs.mkShell {
+              packages = shellPackages;
               shellHook = ''
+                # `nix develop`'s own GC root is removed the moment the shell
+                # exits, so gcc15 (no darwin binary cache -> ~20min source
+                # build) gets garbage-collected and rebuilt on the next run.
+                # Pin the closure as a persistent root to stop that.
+                ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+                mkdir -p "$ROOT/.nix"
+                nix-store --add-root "$ROOT/.nix/dev-profile-${tag}" --indirect --realise ${devEnv} >/dev/null
+
                 export CP_GXX_BIN="${cpGxx}/bin"
                 export PATH="$CP_GXX_BIN:$PATH"   # our g++ wins over any other g++
                 # project files are read live from the dir you ran `nix develop` in

@@ -19,3 +19,11 @@ elif command -v xclip >/dev/null 2>&1; then
 elif command -v xsel >/dev/null 2>&1; then
   alias clip='xsel --clipboard --input'
 fi
+
+# go: rebuild ./a from a.cpp only if a.cpp changed since the last build, then run it.
+go() {
+  if [ ! -x ./a ] || [ a.cpp -nt ./a ]; then
+    g++ a.cpp || return 1
+  fi
+  ./a
+}
